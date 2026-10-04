@@ -29,8 +29,9 @@ class MediationDB:
             # Inicializamos el cliente pasando credenciales y project ID
             self.db = firestore.Client(credentials=credentials, project=project_id, database="wawitadb")
         else:
-            # Si no hay variable configurada, intenta las credenciales del sistema
-            self.db = firestore.Client()
+            # Sin archivo de credenciales: usa Application Default Credentials (ADC)
+            # Se especifica igual la base de datos no-default para evitar el error 404.
+            self.db = firestore.Client(database="wawitadb")
 
         self.status_doc_ref = self.db.collection(collection_name).document("current_status")
         self.log_collection_ref = self.db.collection(log_collection)
