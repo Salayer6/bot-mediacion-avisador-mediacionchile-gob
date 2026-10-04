@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from pathlib import Path
 from dotenv import load_dotenv
@@ -9,6 +10,21 @@ from scraper import MediationScraper
 
 env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=env_path)
+
+# Patrones de datos sensibles a sanitizar en logs y alertas
+_SENSITIVE_PATTERNS = [
+    (re.compile(r"\d{1,2}\.\d{3}\.\d{3}-[\dkK]"), "[RUN_REDACTED]"),          # RUN chileno
+    (re.compile(r"ASP\.NET_SessionId=[^\s&;]+", re.I), "ASP.NET_SessionId=[REDACTED]"),  # Cookie
+    (re.compile(r"webhooks/[\w/]+", re.I), "webhooks/[REDACTED]"),              # Discord webhook
+    (re.compile(r"__RequestVerificationToken=[^&\s]+"), "__RequestVerificationToken=[REDACTED]"),
+]
+
+
+def _sanitize_error(message: str) -> str:
+    """Elimina datos sensibles de mensajes de error antes de loguearlos o enviarlos."""
+    for pattern, replacement in _SENSITIVE_PATTERNS:
+        message = pattern.sub(replacement, message)
+    return message
 
 
 def run_check():
@@ -39,19 +55,19 @@ def run_check():
 
     except Exception as e:
         exec_ms = round((time.time() - start_time) * 1000, 2)
-        error_msg = str(e)
+        error_msg = _sanitize_error(str(e))  # Nunca loguear datos sensibles crudos
         print(f"[ERROR] Falla en chequeo ({exec_ms}ms): {error_msg}")
 
         try:
             db.log_execution(result_type="ERROR", http_code=500, exec_time_ms=exec_ms, error_msg=error_msg)
         except Exception as db_err:
-            print(f"Error al guardar log en Firestore: {db_err}")
+            print(f"Error al guardar log en Firestore: {_sanitize_error(str(db_err))}")
 
         if notifier:
             try:
-                notifier.send_error_alert(error_msg)
+                notifier.send_error_alert(_sanitize_error(error_msg))
             except Exception as notif_err:
-                print(f"Error al enviar alerta a Discord: {notif_err}")
+                print(f"Error al enviar alerta a Discord: {_sanitize_error(str(notif_err))}")
 
         raise e
 

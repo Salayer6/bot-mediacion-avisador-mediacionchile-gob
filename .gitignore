@@ -1,6 +1,5 @@
-# Entornos y credenciales
+# Entornos y credenciales — NUNCA commitear secretos reales
 .env
-.env.example
 *.json
 !package*.json
 
@@ -8,10 +7,14 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.env
 .venv/
 venv/
 ENV/
 
 # Logs y temporales
 *.log
+
+# Scripts de desarrollo/prueba — no deben llegar al repo
+dev_db.py
+
+# .env.example SÍ se commitea (es la plantilla pública sin valores reales)

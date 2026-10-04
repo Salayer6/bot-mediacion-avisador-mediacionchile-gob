@@ -1,0 +1,22 @@
+# Credenciales y secretos — NUNCA deben entrar a la imagen Docker
+.env
+*.json
+!package*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+
+# Archivos de desarrollo
+dev_db.py

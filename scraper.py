@@ -15,6 +15,11 @@ CITACIONES_URL = f"{BASE_URL}/MisCitaciones/MisCitaciones"
 
 NO_SESSIONS_TEXT = "usted no posee sesiones pendientes actualmente"
 
+# Límites de seguridad
+HTTP_TIMEOUT = 15           # segundos
+MAX_RESPONSE_BYTES = 512_000  # 512 KB — previene DoS por respuesta gigante
+ALLOWED_HOST = "pmf.mediacionchile.gob.cl"  # único dominio permitido
+
 
 def format_chilean_run(run: str) -> str:
     """Formatea el RUN al formato ##.###.###-# esperado por el portal."""
@@ -34,21 +39,36 @@ class MediationScraper:
         self.run = run or os.getenv("MEDIACION_RUN", "")
         self.password = password or os.getenv("MEDIACION_PASSWORD", "")
         self.session_cookie = session_cookie or os.getenv("MEDIACION_COOKIE", "")
-        
+
         self.session = requests.Session()
+        # verify=True es el default, se declara explícitamente para dejar constancia
+        # de que la verificación SSL NUNCA debe desactivarse.
+        self.session.verify = True
         self.session.headers.update({
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            # Sin wildcard */* para no aceptar tipos de contenido arbitrarios
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
             "Accept-Language": "es-CL,es;q=0.9,en;q=0.8",
         })
 
         if self.session_cookie:
             # Si se proporciona cookie manual (por ejemplo obtenida con ClaveÚnica)
             self.session.cookies.set("ASP.NET_SessionId", self.session_cookie)
+
+    @staticmethod
+    def _safe_url(url: str) -> str:
+        """Valida que una URL de redirección pertenezca al dominio permitido."""
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if parsed.hostname != ALLOWED_HOST:
+            raise RuntimeError(
+                f"Redirección a dominio no permitido bloqueada: {parsed.hostname!r}"
+            )
+        return url
 
     def login(self) -> bool:
         """Inicia sesión en el portal mediante Segunda Clave."""
@@ -59,12 +79,14 @@ class MediationScraper:
             )
 
         # 1. Obtener token CSRF de la página de SegundaClave
-        resp = self.session.get(LOGIN_PAGE_URL, timeout=15)
+        resp = self.session.get(LOGIN_PAGE_URL, timeout=HTTP_TIMEOUT, stream=True)
         resp.raise_for_status()
+        content = resp.raw.read(MAX_RESPONSE_BYTES, decode_content=True)
+        page_html = content.decode("utf-8", errors="replace")
 
         match = re.search(
             r'name="__RequestVerificationToken"\s+type="hidden"\s+value="([^"]+)"',
-            resp.text,
+            page_html,
         )
         if not match:
             raise RuntimeError("No se encontró el token CSRF en la página de login.")
@@ -88,21 +110,33 @@ class MediationScraper:
         }
 
         login_res = self.session.post(
-            LOGIN_ACTION_URL, data=payload, headers=headers, timeout=15
+            LOGIN_ACTION_URL, data=payload, headers=headers, timeout=HTTP_TIMEOUT
         )
         login_res.raise_for_status()
 
         try:
             data = login_res.json()
         except Exception:
-            raise RuntimeError(f"Respuesta inesperada al iniciar sesión: {login_res.text[:300]}")
+            # No se incluye el cuerpo de la respuesta para evitar filtrar tokens/sesión
+            raise RuntimeError("Respuesta inesperada al iniciar sesión (ver logs del servidor).")
 
         message = data.get("message", "")
         if message == "ERRORSC":
-            raise ValueError("Error de autenticación: RUN o Segunda Clave incorrectos.")
+            # Mensaje genérico: no revelar cuál campo falló
+            raise ValueError("Error de autenticación: verifique sus credenciales en .env.")
 
         # Los mensajes 'HOME', 'PASO1', etc. indican éxito en la autenticación
         return True
+
+    def _get_page(self, url: str) -> str:
+        """Descarga una página con límite de tamaño y validación de dominio."""
+        self._safe_url(url)
+        res = self.session.get(url, timeout=HTTP_TIMEOUT, allow_redirects=True, stream=True)
+        res.raise_for_status()
+        # Validar que la redirección final sigue en el dominio permitido
+        self._safe_url(res.url)
+        content = res.raw.read(MAX_RESPONSE_BYTES, decode_content=True)
+        return content.decode("utf-8", errors="replace")
 
     def check_citations(self) -> dict:
         """
@@ -112,17 +146,14 @@ class MediationScraper:
             - raw_text (str): Texto o detalle detectado.
             - url (str): URL de consulta.
         """
-        # Petición a la sección de citaciones
-        res = self.session.get(CITACIONES_URL, timeout=20, allow_redirects=True)
-        res.raise_for_status()
+        page_html = self._get_page(CITACIONES_URL)
 
         # Si el sitio redirigió al login o al home sin autenticar, autenticamos y reintentamos
-        if "/Login" in res.url or (res.url.rstrip("/") == BASE_URL and not self.session_cookie):
+        if "/Login" in page_html or "SegundaClave" in page_html:
             self.login()
-            res = self.session.get(CITACIONES_URL, timeout=20, allow_redirects=True)
-            res.raise_for_status()
+            page_html = self._get_page(CITACIONES_URL)
 
-        soup = BeautifulSoup(res.text, "html.parser")
+        soup = BeautifulSoup(page_html, "html.parser")
         page_text = " ".join(soup.stripped_strings)
         page_lower = page_text.lower()
 
