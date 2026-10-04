@@ -1,0 +1,4 @@
+google-cloud-firestore
+requests
+beautifulsoup4
+python-dotenv
