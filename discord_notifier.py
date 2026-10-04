@@ -15,7 +15,7 @@ class DiscordNotifier:
                 f"[👉 Ir a Mis Citaciones]({target_url})"
             ),
             "color": 3066993,  # Verde éxito
-            "footer": {"text": "Bot Mediación Valentina"}
+            "footer": {"text": "Bot Mediación Usted"}
         }
         res = requests.post(self.webhook_url, json={"username": "Bot Mediación", "embeds": [embed]}, timeout=10)
         return res.status_code in (200, 204)
@@ -26,6 +26,6 @@ class DiscordNotifier:
             "title": "⚠️ Error en Bot Mediación",
             "description": f"```{error_message[:800]}```",
             "color": 15158332,  # Rojo
-            "footer": {"text": "Bot Mediación Valentina"}
+            "footer": {"text": "Bot Mediación Usted"}
         }
         requests.post(self.webhook_url, json={"username": "Bot Mediación (Error)", "embeds": [embed]}, timeout=10)

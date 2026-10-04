@@ -1,4 +1,4 @@
-﻿# 🤖 Bot Mediación Valentina
+# 🤖 Bot Mediación Usted
 
 Bot automatizado que monitorea el portal [Mediación Chile](https://pmf.mediacionchile.gob.cl) en busca de citaciones agendadas y envía alertas en tiempo real a Discord.
 
@@ -17,7 +17,7 @@ Portal Mediación Chile
 ## Arquitectura
 
 ```
-bot-mediacion-valentina/
+bot-mediacion-usted/
 ├── main.py              # Punto de entrada y orquestador principal
 ├── scraper.py           # Login y scraping del portal mediacionchile.gob.cl
 ├── db_handler.py        # Lectura/escritura de estado en Firestore
@@ -90,7 +90,7 @@ Configurar en **Secret Manager** y mapear como variables de entorno en el Cloud 
 ```bash
 # 1. Clonar y entrar al proyecto
 git clone <repo-url>
-cd bot-mediacion-valentina
+cd bot-mediacion-usted
 
 # 2. Crear entorno virtual e instalar dependencias
 python -m venv .venv
